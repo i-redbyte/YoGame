@@ -4,6 +4,7 @@ package yo.game
 
 import androidx.compose.foundation.Canvas
 import androidx.compose.foundation.background
+import androidx.compose.foundation.focusable
 import androidx.compose.foundation.gestures.detectHorizontalDragGestures
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
@@ -35,11 +36,15 @@ import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.setValue
 import androidx.compose.runtime.withFrameNanos
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
+import androidx.compose.ui.focus.FocusRequester
+import androidx.compose.ui.focus.focusRequester
 import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.drawscope.DrawScope
@@ -50,6 +55,11 @@ import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.text.TextStyle
 import androidx.compose.ui.text.drawText
 import androidx.compose.ui.geometry.*
+import androidx.compose.ui.input.key.Key
+import androidx.compose.ui.input.key.KeyEventType
+import androidx.compose.ui.input.key.key
+import androidx.compose.ui.input.key.onKeyEvent
+import androidx.compose.ui.input.key.type
 import androidx.compose.ui.text.TextMeasurer
 import androidx.compose.ui.text.font.FontFamily
 import androidx.compose.ui.text.font.FontWeight
@@ -164,6 +174,7 @@ fun GameScreen(vm: GameViewModel) {
                         textMeasurer = textMeasurer,
                         onLeft = vm::moveLeft,
                         onRight = vm::moveRight,
+                        onPause = vm::togglePause,
                         modifier = Modifier
                             .fillMaxWidth()
                             .height(boardH)
@@ -196,21 +207,65 @@ private fun GameBoard(
     textMeasurer: TextMeasurer,
     onLeft: () -> Unit,
     onRight: () -> Unit,
+    onPause: () -> Unit,
     modifier: Modifier
 ) {
-    val threshold = 18f
+    val focusRequester = remember { FocusRequester() }
+    var keyProcessed by remember { mutableStateOf(false) }
+    LaunchedEffect(Unit) {
+        focusRequester.requestFocus()
+    }
+
     Box(
-        modifier = modifier.pointerInput(Unit) {
-            var acc = 0f
-            detectHorizontalDragGestures { _, dx ->
-                acc += dx
-                if (acc > threshold) {
-                    onRight()
-                } else if (acc < -threshold) {
-                    onLeft()
+        modifier = modifier
+            .focusRequester(focusRequester)
+            .focusable()
+            .onKeyEvent { keyEvent ->
+                when (keyEvent.key) {
+                    Key.DirectionLeft, Key.A -> {
+                        if (keyEvent.type == KeyEventType.KeyDown && !keyProcessed) {
+                            keyProcessed = true
+                            onLeft()
+                            true
+                        } else if (keyEvent.type == KeyEventType.KeyUp) {
+                            keyProcessed = false
+                            true
+                        } else false
+                    }
+
+                    Key.DirectionRight, Key.D -> {
+                        if (keyEvent.type == KeyEventType.KeyDown && !keyProcessed) {
+                            keyProcessed = true
+                            onRight()
+                            true
+                        } else if (keyEvent.type == KeyEventType.KeyUp) {
+                            keyProcessed = false
+                            true
+                        } else false
+                    }
+
+                    Key.Spacebar, Key.P -> {
+                        if (keyEvent.type == KeyEventType.KeyDown) {
+                            onPause()
+                            true
+                        } else false
+                    }
+
+                    else -> false
                 }
             }
-        },
+            .pointerInput(Unit) {
+                detectHorizontalDragGestures { _, dx ->
+                    val threshold = 18f
+                    var acc = 0f
+                    acc += dx
+                    if (acc > threshold) {
+                        onRight()
+                    } else if (acc < -threshold) {
+                        onLeft()
+                    }
+                }
+            },
         contentAlignment = Alignment.Center
     ) {
         Canvas(modifier = Modifier.fillMaxSize()) {
@@ -218,6 +273,7 @@ private fun GameBoard(
         }
     }
 }
+
 
 @Composable
 private fun MobileControls(
@@ -300,6 +356,7 @@ private fun Overlay(state: GameUiState, onStart: () -> Unit, onRestart: () -> Un
             "Заново",
             onRestart
         )
+
         state.isGameOver -> CenterDialog(
             "Game Over",
             "Счёт: ${state.score}",
